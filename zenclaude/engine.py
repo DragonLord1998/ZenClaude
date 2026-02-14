@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import secrets
+import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,6 +45,45 @@ def _extract_oauth_credentials() -> Optional[str]:
     except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
         pass
     return None
+
+
+def _reinstall_native_deps(workspace: Path) -> None:
+    host_platform = platform.system()
+    if host_platform == "Linux":
+        return
+
+    dirs_to_reinstall: list[Path] = []
+    for node_modules in workspace.rglob("node_modules"):
+        package_json = node_modules.parent / "package.json"
+        if package_json.exists():
+            dirs_to_reinstall.append(node_modules.parent)
+
+    if not dirs_to_reinstall:
+        return
+
+    console.print(
+        f"\n[bold]Reinstalling native dependencies for {host_platform}...[/bold]"
+    )
+
+    for project_dir in dirs_to_reinstall:
+        rel = project_dir.relative_to(workspace) if project_dir != workspace else Path(".")
+        console.print(f"  [dim]{rel}[/dim]")
+
+        nm = project_dir / "node_modules"
+        lock = project_dir / "package-lock.json"
+        shutil.rmtree(nm, ignore_errors=True)
+        if lock.exists():
+            lock.unlink()
+
+        try:
+            subprocess.run(
+                ["npm", "install"],
+                cwd=project_dir,
+                capture_output=True,
+                timeout=120,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+            console.print(f"  [yellow]Warning: npm install failed in {rel}: {exc}[/yellow]")
 
 
 class Engine:
@@ -124,6 +165,9 @@ class Engine:
 
         meta.set_finished(exit_code)
         meta.save(meta_path(sid))
+
+        if exit_code == 0:
+            _reinstall_native_deps(workspace.resolve())
 
         self._notify(sid, meta)
         self._cleanup_container(container_id)
