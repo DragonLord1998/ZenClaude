@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
+import os
 import secrets
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Optional
 
 from rich.console import Console
 
@@ -22,6 +25,26 @@ def _generate_session_id() -> str:
     return f"{timestamp}-{hex_suffix}"
 
 
+def _extract_oauth_credentials() -> Optional[str]:
+    try:
+        result = subprocess.run(
+            [
+                "security", "find-generic-password",
+                "-s", "Claude Code-credentials",
+                "-w",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            json.loads(result.stdout.strip())
+            return result.stdout.strip()
+    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
+        pass
+    return None
+
+
 class Engine:
     def __init__(self, docker: DockerManager, config: dict) -> None:
         self.docker = docker
@@ -34,6 +57,7 @@ class Engine:
         limits: ResourceLimits,
         snapshot: bool = True,
         skill: str | None = None,
+        api_key: Optional[str] = None,
     ) -> SessionMeta:
         ensure_dirs()
         sid = _generate_session_id()
@@ -58,6 +82,25 @@ class Engine:
         console.print("[bold]Building Docker image...[/bold]")
         image = self.docker.build_image()
 
+        resolved_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        if not resolved_key:
+            key_file = Path.home() / ".zenclaude" / "api_key"
+            if key_file.exists():
+                resolved_key = key_file.read_text().strip()
+
+        oauth_creds = None
+        if not resolved_key:
+            oauth_creds = _extract_oauth_credentials()
+
+        if not resolved_key and not oauth_creds:
+            raise RuntimeError(
+                "No API key or OAuth credentials found. Provide one via:\n"
+                "  --api-key KEY\n"
+                "  ANTHROPIC_API_KEY environment variable\n"
+                "  ~/.zenclaude/api_key file\n"
+                "  Claude Code subscription login (macOS Keychain)"
+            )
+
         console.print("[bold]Starting container...[/bold]")
         claude_config = Path.home() / ".claude"
         container_id = self.docker.run_container(
@@ -66,6 +109,8 @@ class Engine:
             task=task,
             claude_config=claude_config,
             limits=limits,
+            api_key=resolved_key,
+            oauth_creds=oauth_creds,
         )
 
         meta.set_running(container_id, image)

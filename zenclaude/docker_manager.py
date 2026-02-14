@@ -95,6 +95,8 @@ class DockerManager:
         task: str,
         claude_config: Path,
         limits: ResourceLimits,
+        api_key: Optional[str] = None,
+        oauth_creds: Optional[str] = None,
     ) -> str:
         workspace = workspace.resolve()
         claude_config = claude_config.resolve()
@@ -120,11 +122,17 @@ class DockerManager:
             str(claude_config): {"bind": "/home/claude/.claude-host", "mode": "ro"},
         }
 
+        env = {"TASK": task}
+        if api_key:
+            env["ANTHROPIC_API_KEY"] = api_key
+        if oauth_creds:
+            env["CLAUDE_OAUTH_CREDENTIALS"] = oauth_creds
+
         try:
             container: Container = self._client.containers.run(
                 image=image,
                 name=container_name,
-                environment={"TASK": task},
+                environment=env,
                 volumes=volumes,
                 mem_limit=limits.memory,
                 nano_cpus=int(float(limits.cpus) * 1e9),

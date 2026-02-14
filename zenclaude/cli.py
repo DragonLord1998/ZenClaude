@@ -40,6 +40,7 @@ def main() -> None:
 @click.option("--no-snapshot", is_flag=True, help="Skip workspace snapshot")
 @click.option("--memory", "-m", default=None, help="Memory limit (e.g., 8g)")
 @click.option("--cpus", default=None, help="CPU limit (e.g., 4)")
+@click.option("--api-key", default=None, help="Anthropic API key (or set ANTHROPIC_API_KEY)")
 def run(
     workspace: Path,
     task: str | None,
@@ -47,6 +48,7 @@ def run(
     no_snapshot: bool,
     memory: str | None,
     cpus: str | None,
+    api_key: str | None,
 ) -> None:
     """Run a task in a Docker container.
 
@@ -102,6 +104,7 @@ def run(
             limits=limits,
             snapshot=snapshot_enabled,
             skill=skill_name,
+            api_key=api_key,
         )
     except Exception as exc:
         console.print(f"[bold red]Error:[/bold red] {exc}")

@@ -20,7 +20,7 @@ Claude Code is interactive by default. ZenClaude makes it fire-and-forget:
 
 - Python 3.9+
 - Docker Desktop (running)
-- Claude Code installed and configured (`~/.claude` with valid API key)
+- Claude Code authentication (subscription login or API key)
 
 ## Installation
 
@@ -57,6 +57,35 @@ zenclaude run --skill technomancer --task "Create a 3D solar system using Three.
 
 The Technomancer skill runs the full engineering lifecycle — planning, parallel implementation, testing, and code review — all autonomously inside the container.
 
+## Authentication
+
+ZenClaude needs to pass your credentials into the Docker container. It checks these sources in order:
+
+### 1. Claude Pro/Max Subscription (macOS Keychain — automatic)
+
+If you're logged into Claude Code via `claude login`, ZenClaude automatically extracts your OAuth token from the macOS Keychain and injects it into the container. No extra setup needed.
+
+### 2. API Key via `--api-key` flag
+
+```bash
+zenclaude run --api-key sk-ant-... --task "Build something" .
+```
+
+### 3. `ANTHROPIC_API_KEY` environment variable
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+zenclaude run --task "Build something" .
+```
+
+### 4. Key file at `~/.zenclaude/api_key`
+
+```bash
+echo "sk-ant-..." > ~/.zenclaude/api_key
+chmod 600 ~/.zenclaude/api_key
+zenclaude run --task "Build something" .
+```
+
 ## Usage
 
 ### `zenclaude run [WORKSPACE]`
@@ -81,6 +110,7 @@ zenclaude run --task "Quick fix" --no-snapshot .
 |---|---|
 | `-t, --task TEXT` | Task description for Claude |
 | `-s, --skill TEXT` | Skill to invoke (e.g., `technomancer`) |
+| `--api-key TEXT` | Anthropic API key (or set `ANTHROPIC_API_KEY`) |
 | `--no-snapshot` | Skip workspace snapshot before running |
 | `-m, --memory TEXT` | Memory limit (default: `8g`) |
 | `--cpus TEXT` | CPU limit (default: `4`) |
