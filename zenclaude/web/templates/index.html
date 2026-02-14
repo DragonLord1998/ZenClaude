@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZenClaude</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header class="topbar">
+        <h1 class="topbar-title">ZenClaude</h1>
+        <button class="btn btn-primary" id="new-task-btn">+ New Task</button>
+    </header>
+
+    <main class="container">
+        <section class="sessions-panel" id="sessions-panel">
+            <div class="sessions-list" id="sessions-list"></div>
+        </section>
+
+        <section class="log-panel hidden" id="log-panel">
+            <div class="log-header">
+                <span class="log-title" id="log-title">Logs</span>
+                <button class="btn btn-ghost" id="close-logs-btn">Close</button>
+            </div>
+            <pre class="log-viewer" id="log-viewer"></pre>
+        </section>
+    </main>
+
+    <div class="modal-overlay hidden" id="modal-overlay">
+        <div class="modal">
+            <h2 class="modal-title">New Task</h2>
+            <form id="new-task-form">
+                <label class="form-label" for="task-input">Task Description</label>
+                <textarea class="form-input form-textarea" id="task-input" rows="3" placeholder="Build a REST API with Express..." required></textarea>
+
+                <label class="form-label" for="workspace-input">Workspace Path</label>
+                <input class="form-input" type="text" id="workspace-input" placeholder="/Users/user/my-project" required>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="memory-select">Memory</label>
+                        <select class="form-input" id="memory-select">
+                            <option value="4g">4 GB</option>
+                            <option value="8g" selected>8 GB</option>
+                            <option value="16g">16 GB</option>
+                            <option value="32g">32 GB</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="cpus-select">CPUs</label>
+                        <select class="form-input" id="cpus-select">
+                            <option value="2">2</option>
+                            <option value="4" selected>4</option>
+                            <option value="8">8</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn btn-ghost" type="button" id="cancel-task-btn">Cancel</button>
+                    <button class="btn btn-primary" type="submit">Run Task</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
