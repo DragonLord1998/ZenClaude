@@ -7,6 +7,7 @@ from typing import Callable
 
 from zenclaude.models import AgentNode, SessionState
 from zenclaude.paths import SESSIONS_DIR
+from zenclaude.stream_parser import StreamParser
 
 
 ListenerCallback = Callable[[str, str, dict], None]
@@ -100,13 +101,31 @@ class SessionStore:
         except (json.JSONDecodeError, OSError):
             return None
 
-        return SessionState(
+        root = AgentNode(
+            id="root",
+            parent_id=None,
+            agent_type="root",
+            description="root agent",
+        )
+        state = SessionState(
             session_id=raw.get("id", session_id),
             task=raw.get("task", ""),
             status=raw.get("status", "unknown"),
             started_at=raw.get("started_at"),
             finished_at=raw.get("finished_at"),
+            root_agent=root,
         )
+
+        log_path = SESSIONS_DIR / session_id / "output.log"
+        if log_path.exists():
+            try:
+                parser = StreamParser(state)
+                for line in log_path.read_text().splitlines():
+                    parser.feed_line(line)
+            except Exception:
+                pass
+
+        return state
 
     def _discover_disk_sessions(self) -> list[str]:
         if not SESSIONS_DIR.exists():

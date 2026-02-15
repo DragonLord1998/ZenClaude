@@ -49,6 +49,15 @@ def _locate_dockerfile_dir() -> Path:
     )
 
 
+def _compute_content_hash(dockerfile_dir: Path) -> str:
+    hasher = hashlib.sha256()
+    for file_path in sorted(dockerfile_dir.glob("*")):
+        if file_path.is_file():
+            hasher.update(file_path.name.encode())
+            hasher.update(file_path.read_bytes())
+    return hasher.hexdigest()
+
+
 class DockerManager:
 
     def __init__(self) -> None:
@@ -62,14 +71,17 @@ class DockerManager:
             ) from exc
 
     def build_image(self, force: bool = False) -> str:
+        dockerfile_dir = _locate_dockerfile_dir()
+        current_hash = _compute_content_hash(dockerfile_dir)
+
         if not force:
             try:
-                self._client.images.get(IMAGE_TAG)
-                return IMAGE_TAG
+                existing_image = self._client.images.get(IMAGE_TAG)
+                stored_hash = existing_image.labels.get("zenclaude.content_hash")
+                if stored_hash == current_hash:
+                    return IMAGE_TAG
             except docker.errors.ImageNotFound:
                 pass
-
-        dockerfile_dir = _locate_dockerfile_dir()
 
         try:
             self._client.images.build(
@@ -77,6 +89,7 @@ class DockerManager:
                 tag=IMAGE_TAG,
                 rm=True,
                 pull=False,
+                labels={"zenclaude.content_hash": current_hash},
             )
         except docker.errors.BuildError as exc:
             log_lines = [chunk.get("stream", "") for chunk in exc.build_log]
