@@ -13,10 +13,12 @@ from typing import Iterator, Optional
 from rich.console import Console
 
 from zenclaude.docker_manager import DockerManager
-from zenclaude.models import ResourceLimits, SessionMeta, STATUS_RUNNING
+from zenclaude.models import ResourceLimits, SessionMeta, SessionState, STATUS_RUNNING
 from zenclaude.notify import notify_session_complete
 from zenclaude.paths import ensure_dirs, log_path, meta_path, session_dir, SESSIONS_DIR
+from zenclaude.session_store import session_store
 from zenclaude.snapshot import create_snapshot
+from zenclaude.stream_parser import StreamParser
 
 console = Console()
 
@@ -161,7 +163,18 @@ class Engine:
             f"[bold green]Running[/bold green] session [bold]{sid}[/bold]\n"
         )
 
-        exit_code = self._stream_and_wait(sid, container_id)
+        session_state = session_store.create_session(
+            session_id=sid,
+            task=task,
+            status="running",
+            started_at=meta.started_at,
+        )
+
+        exit_code = self._stream_and_wait(sid, container_id, session_state)
+
+        if session_state.status != "completed":
+            session_state.status = "failed" if exit_code != 0 else "completed"
+            session_state.finished_at = datetime.now(timezone.utc).isoformat()
 
         meta.set_finished(exit_code)
         meta.save(meta_path(sid))
@@ -222,13 +235,35 @@ class Engine:
         elif meta.container_id:
             yield from self.docker.stream_logs(meta.container_id, follow=False)
 
-    def _stream_and_wait(self, session_id: str, container_id: str) -> int:
+    def _stream_and_wait(
+        self,
+        session_id: str,
+        container_id: str,
+        session_state: SessionState | None = None,
+    ) -> int:
+        parser = None
+        if session_state:
+            parser = StreamParser(
+                session_state,
+                on_change=session_store.notify_listeners,
+            )
+
         output_path = log_path(session_id)
+        line_buffer = ""
         with open(output_path, "w") as log_file:
-            for line in self.docker.stream_logs(container_id, follow=True):
-                console.print(line, highlight=False, end="")
-                log_file.write(line)
+            for chunk in self.docker.stream_logs(container_id, follow=True):
+                console.print(chunk, highlight=False, end="")
+                log_file.write(chunk)
                 log_file.flush()
+
+                if parser:
+                    line_buffer += chunk
+                    while "\n" in line_buffer:
+                        line, line_buffer = line_buffer.split("\n", 1)
+                        parser.feed_line(line)
+
+        if parser and line_buffer.strip():
+            parser.feed_line(line_buffer)
 
         exit_code = self.docker.get_exit_code(container_id)
         return exit_code if exit_code is not None else 1

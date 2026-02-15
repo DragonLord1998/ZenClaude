@@ -68,3 +68,114 @@ class SessionMeta:
     def set_stopped(self) -> None:
         self.status = STATUS_STOPPED
         self.finished_at = datetime.now(timezone.utc).isoformat()
+
+
+@dataclass
+class ToolEvent:
+    id: str
+    agent_id: str
+    tool_name: str
+    summary: str
+    status: str
+    timestamp: str
+    input_preview: str = ""
+    output_preview: str = ""
+    duration_ms: int | None = None
+    error: str | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "agent_id": self.agent_id,
+            "tool_name": self.tool_name,
+            "summary": self.summary,
+            "status": self.status,
+            "timestamp": self.timestamp,
+            "input_preview": self.input_preview,
+            "output_preview": self.output_preview,
+            "duration_ms": self.duration_ms,
+            "error": self.error,
+        }
+
+
+@dataclass
+class AgentNode:
+    id: str
+    parent_id: str | None
+    agent_type: str
+    description: str
+    status: str = "pending"
+    started_at: str | None = None
+    finished_at: str | None = None
+    children: list[AgentNode] = field(default_factory=list)
+    events: list[ToolEvent] = field(default_factory=list)
+    model: str | None = None
+
+    def to_summary_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "parent_id": self.parent_id,
+            "agent_type": self.agent_type,
+            "description": self.description,
+            "status": self.status,
+            "started_at": self.started_at,
+            "finished_at": self.finished_at,
+            "model": self.model,
+            "children": [c.to_summary_dict() for c in self.children],
+            "event_count": len(self.events),
+        }
+
+    def to_detail_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "parent_id": self.parent_id,
+            "agent_type": self.agent_type,
+            "description": self.description,
+            "status": self.status,
+            "started_at": self.started_at,
+            "finished_at": self.finished_at,
+            "model": self.model,
+            "children": [c.to_detail_dict() for c in self.children],
+            "events": [e.to_dict() for e in self.events],
+        }
+
+
+@dataclass
+class SessionState:
+    session_id: str
+    task: str
+    status: str
+    started_at: str | None = None
+    finished_at: str | None = None
+    root_agent: AgentNode = field(default_factory=lambda: AgentNode(
+        id="root", parent_id=None, agent_type="root", description="root agent",
+    ))
+    total_cost_usd: float | None = None
+    total_tokens: int | None = None
+    model: str | None = None
+
+    def to_summary_dict(self) -> dict:
+        return {
+            "session_id": self.session_id,
+            "task": self.task,
+            "status": self.status,
+            "started_at": self.started_at,
+            "finished_at": self.finished_at,
+            "root_agent": self.root_agent.to_summary_dict(),
+            "total_cost_usd": self.total_cost_usd,
+            "total_tokens": self.total_tokens,
+            "model": self.model,
+        }
+
+    def to_detail_dict(self) -> dict:
+        return {
+            "session_id": self.session_id,
+            "task": self.task,
+            "status": self.status,
+            "started_at": self.started_at,
+            "finished_at": self.finished_at,
+            "root_agent": self.root_agent.to_detail_dict(),
+            "total_cost_usd": self.total_cost_usd,
+            "total_tokens": self.total_tokens,
+            "model": self.model,
+        }

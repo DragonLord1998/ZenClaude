@@ -16,4 +16,4 @@ if [ -z "${TASK:-}" ]; then
     exec /bin/bash
 fi
 
-exec claude --dangerously-skip-permissions -p "$TASK" --verbose
+exec claude --dangerously-skip-permissions -p "$TASK" --verbose --output-format stream-json 2>&1
