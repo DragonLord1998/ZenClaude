@@ -86,9 +86,6 @@ class StreamParser:
         subtype = data.get("subtype")
         if subtype == "init":
             self._state.model = data.get("model")
-            session_id = data.get("session_id")
-            if session_id:
-                self._state.session_id = session_id
             self._state.root_agent.status = "running"
             self._state.root_agent.started_at = _now_iso()
             self._state.status = "running"

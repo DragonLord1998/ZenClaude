@@ -138,7 +138,7 @@ class TestStreamParserSystemEvent:
         assert state.model == "claude-opus-4-6"
         assert state.status == "running"
         assert state.root_agent.status == "running"
-        assert state.session_id == "real-session-id"
+        assert state.session_id == "test-session"
 
 
 class TestStreamParserAssistantEvent:
