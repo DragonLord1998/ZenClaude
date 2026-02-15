@@ -122,6 +122,12 @@ class SessionStore:
                 parser = StreamParser(state)
                 for line in log_path.read_text().splitlines():
                     parser.feed_line(line)
+
+                session_dir = SESSIONS_DIR / session_id
+                for child_log in sorted(session_dir.glob("child-*.log")):
+                    tool_use_id = child_log.stem.removeprefix("child-")
+                    for line in child_log.read_text().splitlines():
+                        parser.feed_child_line(tool_use_id, line)
             except Exception:
                 pass
 

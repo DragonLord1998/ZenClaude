@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from datetime import datetime, timezone
-from typing import Callable
+from typing import Callable, Optional
 
 from zenclaude.models import AgentNode, SessionState, ToolEvent
+
+AsyncAgentCallback = Callable[[str, str], None]
 
 
 def _now_iso() -> str:
@@ -46,17 +49,25 @@ def _extract_input_preview(tool_input: dict) -> str:
     return _truncate(raw)
 
 
+def _extract_output_file(text: str) -> Optional[str]:
+    match = re.search(r"output_file:\s*(\S+)", text)
+    return match.group(1) if match else None
+
+
 class StreamParser:
     def __init__(
         self,
         session_state: SessionState,
         on_change: Callable[[str, str, dict], None] | None = None,
+        on_async_agent: AsyncAgentCallback | None = None,
     ) -> None:
         self._state = session_state
         self._on_change = on_change
+        self._on_async_agent = on_async_agent
         self._task_to_agent: dict[str, AgentNode] = {}
         self._agents_by_id: dict[str, AgentNode] = {"root": session_state.root_agent}
         self._events_by_tool_use_id: dict[str, ToolEvent] = {}
+        self._child_parsers: dict[str, _ChildStreamParser] = {}
 
     @property
     def state(self) -> SessionState:
@@ -105,7 +116,23 @@ class StreamParser:
             elif block_type == "tool_use":
                 self._handle_tool_use_block(block, owning_agent)
 
+    def feed_child_line(self, tool_use_id: str, line: str) -> None:
+        parser = self._child_parsers.get(tool_use_id)
+        if not parser:
+            agent = self._task_to_agent.get(tool_use_id)
+            if not agent:
+                return
+            parser = _ChildStreamParser(
+                agent=agent,
+                session_id=self._state.session_id,
+                on_change=self._on_change,
+            )
+            self._child_parsers[tool_use_id] = parser
+        parser.feed_line(line)
+
     def _handle_user(self, data: dict) -> None:
+        self._detect_async_agent(data)
+
         parent_tool_use_id = data.get("parent_tool_use_id")
         owning_agent = self._resolve_owning_agent(parent_tool_use_id)
 
@@ -115,6 +142,30 @@ class StreamParser:
         for block in content_blocks:
             if block.get("type") == "tool_result":
                 self._handle_tool_result(block, owning_agent)
+
+    def _detect_async_agent(self, data: dict) -> None:
+        tur = data.get("tool_use_result")
+        if not isinstance(tur, dict) or not tur.get("isAsync"):
+            return
+
+        message = data.get("message", {})
+        content_blocks = message.get("content", [])
+
+        tool_use_id = None
+        output_file = None
+
+        for block in content_blocks:
+            if not isinstance(block, dict) or block.get("type") != "tool_result":
+                continue
+            tool_use_id = block.get("tool_use_id")
+            content = block.get("content", "")
+            if isinstance(content, list):
+                content = content[0].get("text", "") if content else ""
+            output_file = _extract_output_file(content)
+            break
+
+        if tool_use_id and output_file and self._on_async_agent:
+            self._on_async_agent(tool_use_id, output_file)
 
     def _handle_result(self, data: dict) -> None:
         cost = data.get("cost_usd") or data.get("cost")
@@ -243,3 +294,108 @@ class StreamParser:
     def _notify(self, event_type: str, data: dict) -> None:
         if self._on_change:
             self._on_change(self._state.session_id, event_type, data)
+
+
+class _ChildStreamParser:
+    def __init__(
+        self,
+        agent: AgentNode,
+        session_id: str,
+        on_change: Callable[[str, str, dict], None] | None = None,
+    ) -> None:
+        self._agent = agent
+        self._session_id = session_id
+        self._on_change = on_change
+        self._events_by_tool_use_id: dict[str, ToolEvent] = {}
+
+    def feed_line(self, line: str) -> None:
+        stripped = line.strip()
+        if not stripped:
+            return
+        try:
+            data = json.loads(stripped)
+        except json.JSONDecodeError:
+            return
+
+        event_type = data.get("type")
+        if event_type == "assistant":
+            self._handle_assistant(data)
+        elif event_type == "user":
+            self._handle_user(data)
+
+    def _handle_assistant(self, data: dict) -> None:
+        message = data.get("message", {})
+        for block in message.get("content", []):
+            if not isinstance(block, dict):
+                continue
+            block_type = block.get("type")
+            if block_type == "text":
+                self._handle_text(block)
+            elif block_type == "tool_use":
+                self._handle_tool_use(block)
+
+    def _handle_user(self, data: dict) -> None:
+        message = data.get("message", {})
+        for block in message.get("content", []):
+            if isinstance(block, dict) and block.get("type") == "tool_result":
+                self._handle_tool_result(block)
+
+    def _handle_text(self, block: dict) -> None:
+        text = block.get("text", "")
+        if not text.strip():
+            return
+        event = ToolEvent(
+            id=str(uuid.uuid4()),
+            agent_id=self._agent.id,
+            tool_name="text",
+            summary=_truncate(text, 80),
+            status="complete",
+            timestamp=_now_iso(),
+            input_preview=_truncate(text),
+        )
+        self._agent.events.append(event)
+        self._notify("tool_event", event.to_dict())
+
+    def _handle_tool_use(self, block: dict) -> None:
+        tool_use_id = block.get("id", str(uuid.uuid4()))
+        tool_name = block.get("name", "unknown")
+        tool_input = block.get("input", {})
+        event = ToolEvent(
+            id=tool_use_id,
+            agent_id=self._agent.id,
+            tool_name=tool_name,
+            summary=_build_tool_summary(tool_name, tool_input),
+            status="running",
+            timestamp=_now_iso(),
+            input_preview=_extract_input_preview(tool_input),
+        )
+        self._agent.events.append(event)
+        self._events_by_tool_use_id[tool_use_id] = event
+        self._notify("tool_event", event.to_dict())
+
+    def _handle_tool_result(self, block: dict) -> None:
+        tool_use_id = block.get("tool_use_id")
+        if not tool_use_id:
+            return
+        event = self._events_by_tool_use_id.get(tool_use_id)
+        if not event:
+            return
+        is_error = block.get("is_error", False)
+        content = block.get("content", "")
+        if isinstance(content, list):
+            text_parts = [c.get("text", "") for c in content if isinstance(c, dict)]
+            content = "\n".join(text_parts)
+        elif not isinstance(content, str):
+            content = str(content)
+        event.status = "error" if is_error else "complete"
+        event.output_preview = _truncate(content)
+        if is_error:
+            event.error = _truncate(content, 500)
+        duration = block.get("duration_ms") or block.get("durationMs")
+        if duration is not None:
+            event.duration_ms = int(duration)
+        self._notify("tool_result", event.to_dict())
+
+    def _notify(self, event_type: str, data: dict) -> None:
+        if self._on_change:
+            self._on_change(self._session_id, event_type, data)

@@ -6,6 +6,7 @@ import platform
 import secrets
 import shutil
 import subprocess
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator, Optional
@@ -241,11 +242,23 @@ class Engine:
         container_id: str,
         session_state: SessionState | None = None,
     ) -> int:
+        child_threads: list[threading.Thread] = []
+
+        def on_async_agent(tool_use_id: str, output_file: str) -> None:
+            t = threading.Thread(
+                target=self._tail_child_agent,
+                args=(session_id, container_id, tool_use_id, output_file, parser),
+                daemon=True,
+            )
+            t.start()
+            child_threads.append(t)
+
         parser = None
         if session_state:
             parser = StreamParser(
                 session_state,
                 on_change=session_store.notify_listeners,
+                on_async_agent=on_async_agent,
             )
 
         output_path = log_path(session_id)
@@ -265,8 +278,35 @@ class Engine:
         if parser and line_buffer.strip():
             parser.feed_line(line_buffer)
 
+        for t in child_threads:
+            t.join(timeout=5)
+
         exit_code = self.docker.get_exit_code(container_id)
         return exit_code if exit_code is not None else 1
+
+    def _tail_child_agent(
+        self,
+        session_id: str,
+        container_id: str,
+        tool_use_id: str,
+        output_file: str,
+        parser: StreamParser,
+    ) -> None:
+        child_log = session_dir(session_id) / f"child-{tool_use_id}.log"
+        line_buffer = ""
+        try:
+            with open(child_log, "w") as f:
+                for chunk in self.docker.stream_file(container_id, output_file):
+                    f.write(chunk)
+                    f.flush()
+                    line_buffer += chunk
+                    while "\n" in line_buffer:
+                        line, line_buffer = line_buffer.split("\n", 1)
+                        parser.feed_child_line(tool_use_id, line)
+        except Exception:
+            pass
+        if line_buffer.strip():
+            parser.feed_child_line(tool_use_id, line_buffer)
 
     def _notify(self, session_id: str, meta: SessionMeta) -> None:
         notifications = self.config.get("notifications", {})

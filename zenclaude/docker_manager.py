@@ -201,6 +201,25 @@ class DockerManager:
         except docker.errors.APIError:
             return
 
+    def stream_file(self, container_id: str, file_path: str) -> Iterator[str]:
+        import time
+        container = self._get_container(container_id)
+        for _ in range(10):
+            exit_code, _ = container.exec_run(["test", "-f", file_path])
+            if exit_code == 0:
+                break
+            time.sleep(1)
+        try:
+            _, output = container.exec_run(
+                ["tail", "-n", "+1", "-f", file_path],
+                stream=True,
+                demux=False,
+            )
+            for chunk in output:
+                yield chunk.decode("utf-8", errors="replace")
+        except docker.errors.APIError:
+            return
+
     def remove_container(self, container_id: str) -> None:
         container = self._get_container(container_id)
         try:
