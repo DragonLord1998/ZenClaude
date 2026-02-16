@@ -5,6 +5,33 @@ interface AgentTreeCardProps {
   session: SessionSummary;
   isSelected: boolean;
   onSelect: () => void;
+  index: number;
+}
+
+function cleanTaskTitle(raw: string): string {
+  let title = raw.replace(/^#+\s*/, "");
+  title = title.replace(/\*\*/g, "");
+  title = title.replace(/\n.*/s, "");
+  if (title.length > 80) {
+    title = title.slice(0, 77) + "...";
+  }
+  return title.trim() || raw.slice(0, 60);
+}
+
+function humanizeAgentType(agentType: string): string {
+  const map: Record<string, string> = {
+    "root": "Primary",
+    "general-purpose": "Worker",
+    "Explore": "Explorer",
+    "scout-servitor": "Scout",
+    "technomancer": "Technomancer",
+    "servitor": "Fabricator",
+    "test-servitor": "Tester",
+    "Plan": "Planner",
+    "Bash": "Terminal",
+    "claude-code-guide": "Guide",
+  };
+  return map[agentType] ?? agentType.charAt(0).toUpperCase() + agentType.slice(1);
 }
 
 function formatDuration(startedAt: string | null, finishedAt: string | null): string {
@@ -20,12 +47,34 @@ function formatDuration(startedAt: string | null, finishedAt: string | null): st
   return `${secs}s`;
 }
 
+const STATUS_DISPLAY: Record<SessionSummary["status"], string> = {
+  starting: "Starting",
+  running: "Running",
+  completed: "Complete",
+  failed: "Failed",
+  stopped: "Stopped",
+};
+
+function isTrivialDescription(agentType: string, description: string): boolean {
+  if (!description) return true;
+  const lower = description.toLowerCase();
+  const typeLower = agentType.toLowerCase();
+  return lower === typeLower || lower === `${typeLower} agent`;
+}
+
 function AgentDiamonds({ agent, depth }: { agent: AgentNodeSummary; depth: number }) {
+  const label = humanizeAgentType(agent.agent_type);
+  const sublabel = isTrivialDescription(agent.agent_type, agent.description)
+    ? undefined
+    : agent.description;
+
   return (
     <>
       <StatusDiamond
         status={agent.status}
-        label={`${agent.agent_type}: ${agent.description}`}
+        label={label}
+        sublabel={sublabel}
+        eventCount={agent.event_count}
         indent={depth}
       />
       {agent.children.map((child) => (
@@ -35,21 +84,22 @@ function AgentDiamonds({ agent, depth }: { agent: AgentNodeSummary; depth: numbe
   );
 }
 
-export function AgentTreeCard({ session, isSelected, onSelect }: AgentTreeCardProps) {
+export function AgentTreeCard({ session, isSelected, onSelect, index }: AgentTreeCardProps) {
   const statusClass = `status-${session.status}`;
 
   return (
     <div
-      className={`session-card${isSelected ? " selected" : ""}`}
+      className={`session-card animate-fade-in-up${isSelected ? " selected" : ""}`}
+      style={{ '--stagger-delay': `${index * 50}ms` } as React.CSSProperties}
       onClick={onSelect}
     >
       <div className="session-card-header">
         <div className="session-info">
-          <div className="session-task">{session.task}</div>
+          <div className="session-task">{cleanTaskTitle(session.task)}</div>
           <div className="session-meta">
             <span className={`status-badge ${statusClass}`}>
               <span className="status-dot" />
-              {session.status}
+              {STATUS_DISPLAY[session.status]}
             </span>
             <span>{formatDuration(session.started_at, session.finished_at)}</span>
             {session.model && <span className="session-model">{session.model}</span>}

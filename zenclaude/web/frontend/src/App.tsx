@@ -10,8 +10,8 @@ export function App() {
   const [modalOpen, setModalOpen] = useState(false);
 
   return (
-    <div className="app-shell">
-      <header className="topbar">
+    <div className="app-shell" style={{ background: 'radial-gradient(ellipse at 50% 0%, rgba(10, 132, 255, 0.03) 0%, transparent 70%)' }}>
+      <header className="topbar glass">
         <h1 className="topbar-title">ZenClaude</h1>
         <button
           className="btn btn-primary"

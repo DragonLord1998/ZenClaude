@@ -10,10 +10,12 @@ const STATUS_COLORS: Record<AgentStatus, string> = {
 interface StatusDiamondProps {
   status: AgentStatus;
   label: string;
+  sublabel?: string;
+  eventCount?: number;
   indent?: number;
 }
 
-export function StatusDiamond({ status, label, indent = 0 }: StatusDiamondProps) {
+export function StatusDiamond({ status, label, sublabel, eventCount, indent = 0 }: StatusDiamondProps) {
   const color = STATUS_COLORS[status];
   const isRunning = status === "running";
 
@@ -21,13 +23,19 @@ export function StatusDiamond({ status, label, indent = 0 }: StatusDiamondProps)
     <div
       className="status-diamond-row"
       style={{ paddingLeft: indent * 16 }}
-      title={label}
+      title={sublabel ? `${label} — ${sublabel}` : label}
     >
       <span
-        className={`status-diamond${isRunning ? " pulse" : ""}`}
+        className={`status-diamond${isRunning ? " pulse glow" : ""}`}
         style={{ backgroundColor: color }}
       />
-      <span className="status-diamond-label">{label}</span>
+      <div className="status-diamond-label">
+        <span>{label}</span>
+        {sublabel && <span className="status-diamond-sublabel">{sublabel}</span>}
+      </div>
+      {eventCount != null && eventCount > 0 && (
+        <span className="status-diamond-count">{eventCount}</span>
+      )}
     </div>
   );
 }

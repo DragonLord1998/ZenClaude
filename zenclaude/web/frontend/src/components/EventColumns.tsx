@@ -26,8 +26,8 @@ export function EventColumns({ sessionId }: EventColumnsProps) {
     return (
       <main className="right-panel">
         <div className="empty-state">
-          <div className="empty-state-title">Select a session</div>
-          <p>Choose a session from the left to view its event stream.</p>
+          <div className="empty-state-title">Select a Session</div>
+          <p>Choose a session from the sidebar to view live agent activity.</p>
         </div>
       </main>
     );

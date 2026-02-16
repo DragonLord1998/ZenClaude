@@ -35,6 +35,14 @@ export function NewTaskModal({ onClose, onCreated }: NewTaskModalProps) {
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const wsContainerRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [onClose]);
+
   const fetchSuggestions = useCallback(async (prefix: string) => {
     try {
       const res = await fetch(`/api/browse?prefix=${encodeURIComponent(prefix)}`);
@@ -138,7 +146,7 @@ export function NewTaskModal({ onClose, onCreated }: NewTaskModalProps) {
   }
 
   const activeSkill = skills.find((s) => s.name === selectedSkill);
-  const taskPlaceholder = activeSkill?.argument_hint || "Build a REST API with Express...";
+  const taskPlaceholder = activeSkill?.argument_hint || "Describe what you want to build...";
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     if (e.target.files) {
@@ -187,7 +195,7 @@ export function NewTaskModal({ onClose, onCreated }: NewTaskModalProps) {
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
+      <div className="modal animate-scale-in">
         <h2 className="modal-title">New Task</h2>
         <form onSubmit={handleSubmit}>
           <label className="form-label" htmlFor="workspace-input">Workspace Path</label>
@@ -234,7 +242,7 @@ export function NewTaskModal({ onClose, onCreated }: NewTaskModalProps) {
             value={selectedSkill}
             onChange={(e) => setSelectedSkill(e.target.value)}
           >
-            <option value="">None</option>
+            <option value="">No skill selected</option>
             {skills.map((skill) => (
               <option key={skill.name} value={skill.name}>{skill.name}</option>
             ))}
@@ -261,7 +269,8 @@ export function NewTaskModal({ onClose, onCreated }: NewTaskModalProps) {
             onDragLeave={() => setDragover(false)}
             onDrop={handleDrop}
           >
-            Drop files here or click to browse
+            <div className="upload-zone-title">Attach Files</div>
+            <div className="upload-zone-subtitle">Drop or click to browse</div>
           </div>
           <input
             type="file"
@@ -321,7 +330,7 @@ export function NewTaskModal({ onClose, onCreated }: NewTaskModalProps) {
           <div className="modal-actions">
             <button className="btn btn-ghost" type="button" onClick={onClose}>Cancel</button>
             <button className="btn btn-primary" type="submit" disabled={submitting}>
-              {submitting ? "Starting..." : "Run Task"}
+              {submitting ? <><span className="btn-spinner" /> Launching...</> : "Launch Task"}
             </button>
           </div>
         </form>

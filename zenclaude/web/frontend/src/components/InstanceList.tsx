@@ -13,7 +13,7 @@ export function InstanceList({ sessions, selectedId, onSelect }: InstanceListPro
       <aside className="left-panel">
         <div className="empty-state">
           <div className="empty-state-title">No sessions yet</div>
-          <p>Start a new task to get going.</p>
+          <p>Launch a new task to begin.</p>
         </div>
       </aside>
     );
@@ -21,12 +21,13 @@ export function InstanceList({ sessions, selectedId, onSelect }: InstanceListPro
 
   return (
     <aside className="left-panel">
-      {sessions.map((s) => (
+      {sessions.map((s, i) => (
         <AgentTreeCard
           key={s.session_id}
           session={s}
           isSelected={s.session_id === selectedId}
           onSelect={() => onSelect(s.session_id)}
+          index={i}
         />
       ))}
     </aside>
